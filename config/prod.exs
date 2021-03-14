@@ -10,7 +10,17 @@ use Mix.Config
 # which you should run after static files are built and
 # before starting your production server.
 config :lucky, LuckyWeb.Endpoint,
-  url: [host: "example.com", port: 80],
+  url: [host: System.get_env("LUCKY_HOSTNAME"), port: 443],
+  http: [ port: 80 ],
+  force_ssl: [hsts: true ],
+  https: [
+        port: 443,
+        otp_app: :lucky,
+        cipher_suite: :strong,
+        keyfile: System.get_env("LUCKY_SSL_KEY_PATH"),
+        certfile: System.get_env("LUCKY_SSL_CERT_PATH"),
+        transport_options: [socket_opts: [:inet6]]
+  ],
   cache_static_manifest: "priv/static/cache_manifest.json"
 
 # Do not print debug messages in production
