@@ -1,5 +1,4 @@
 defmodule Lucky.Presence do
-
   use Phoenix.Presence,
     otp_app: :lucky,
     pubsub_server: Lucky.PubSub
@@ -8,6 +7,10 @@ defmodule Lucky.Presence do
 
   def track_presence(pid, topic, key, payload) do
     Presence.track(pid, topic, key, payload)
+  end
+
+  def untrack_presence(pid, topic, key) do
+    Presence.untrack(pid, topic, key)
   end
 
   def update_presence(pid, topic, key, payload) do

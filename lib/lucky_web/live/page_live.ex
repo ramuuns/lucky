@@ -3,7 +3,7 @@ defmodule LuckyWeb.PageLive do
 
   def render(assigns) do
     ~H"""
-        <h1>Hello world</h1>
+    <h1>Hello world</h1>
     """
   end
 
@@ -11,5 +11,4 @@ defmodule LuckyWeb.PageLive do
   def mount(_params, _session, socket) do
     {:ok, socket}
   end
-
 end
