@@ -56,7 +56,7 @@ defmodule LuckyWeb.GameLive do
         </div>
         <div :if={{ @game_state.state != :unstarted and is_current(@username, @game_state.players) }}>
           <h3>Kauli pie tevis</h3>
-          <p>Lūc nemarinē</p>
+          <p>Lūc nemarinē <Timer id="timer" /></p>
         </div>
         <div :if={{ @game_state.bet != nil }}>
           Likme: {{ render_dice(@game_state.bet) }}
@@ -206,14 +206,11 @@ defmodule LuckyWeb.GameLive do
 
   @impl true
   def mount(params, _session, socket) do
-    GameServer.create(Lucky.GameServer, params["name"])
-    {:ok, game} = GameServer.get(Lucky.GameServer, params["name"])
+    socket = Surface.init(socket)
 
     socket =
       socket
       |> assign(:name, params["name"])
-      |> assign(:game, game)
-      |> assign(:game_state, Game.get_state(game))
       |> assign(:username, nil)
       |> assign(:previous_round, nil)
       |> assign(:timer, nil)
@@ -231,8 +228,20 @@ defmodule LuckyWeb.GameLive do
           socket |> put_flash(:error, "Ieraksti vārdu varbūt :)")
 
         _ ->
-          game = socket.assigns.game
+          GameServer.create(Lucky.GameServer, socket.assigns.name)
+          {:ok, game} = GameServer.get(Lucky.GameServer, socket.assigns.name)
+
           %{players: players} = Game.get_state(game)
+
+          if Enum.empty?(Presence.list_presences(socket.assigns.name)) and
+               not Enum.empty?(players) do
+            for player <- players do
+              Game.remove_player(game, player)
+            end
+          end
+
+          %{players: players} = Game.get_state(game)
+
           ok? = Enum.empty?(Enum.filter(players, fn pl -> pl.name == username end))
 
           case ok? do
@@ -250,7 +259,11 @@ defmodule LuckyWeb.GameLive do
               )
 
               LuckyWeb.Endpoint.subscribe(socket.assigns.name)
-              socket |> assign(:username, username) |> assign(:game_state, game_state)
+
+              socket
+              |> assign(:username, username)
+              |> assign(:game, game)
+              |> assign(:game_state, game_state)
           end
       end
 
@@ -263,6 +276,7 @@ defmodule LuckyWeb.GameLive do
     game = socket.assigns.game
     Game.start(game)
     LuckyWeb.Endpoint.broadcast_from(self(), socket.assigns.name, "update", :ok)
+    Timer.setTime("timer", 60)
     {:noreply, socket |> assign(:timer, 60) |> assign(:game_state, Game.get_state(game))}
   end
 
@@ -271,6 +285,7 @@ defmodule LuckyWeb.GameLive do
     game = socket.assigns.game
     Game.roll_dice(game)
     LuckyWeb.Endpoint.broadcast_from(self(), socket.assigns.name, "update", :ok)
+    Timer.setTime("timer", 60)
     {:noreply, socket |> assign(:timer, 60) |> assign(:game_state, Game.get_state(game))}
   end
 
@@ -279,6 +294,7 @@ defmodule LuckyWeb.GameLive do
     game = socket.assigns.game
     Game.peek(game)
     LuckyWeb.Endpoint.broadcast_from(self(), socket.assigns.name, "update", :ok)
+    Timer.setTime("timer", 60)
     {:noreply, socket |> assign(:timer, 60) |> assign(:game_state, Game.get_state(game))}
   end
 
@@ -288,6 +304,7 @@ defmodule LuckyWeb.GameLive do
     [bet0, bet1] = Enum.map(String.split(bet, ", "), fn st -> String.to_integer(st) end)
     Game.bet(game, {bet0, bet1})
     LuckyWeb.Endpoint.broadcast_from(self(), socket.assigns.name, "update", :ok)
+    Timer.setTime("timer", nil)
     {:noreply, socket |> assign(:timer, nil) |> assign(:game_state, Game.get_state(game))}
   end
 
@@ -296,6 +313,7 @@ defmodule LuckyWeb.GameLive do
     game = socket.assigns.game
     Game.accept(game)
     LuckyWeb.Endpoint.broadcast_from(self(), socket.assigns.name, "update", :ok)
+    Timer.setTime("timer", 60)
     {:noreply, socket |> assign(:timer, 60) |> assign(:game_state, Game.get_state(game))}
   end
 
@@ -309,6 +327,8 @@ defmodule LuckyWeb.GameLive do
       prev_bet: prev_bet,
       prev_dice: prev_dice
     })
+
+    Timer.setTime("timer", 60)
 
     {:noreply,
      socket
@@ -328,7 +348,19 @@ defmodule LuckyWeb.GameLive do
             Game.remove_player(game, %{name: name})
           end
 
-          socket |> assign(:game_state, Game.get_state(game))
+          game_state = Game.get_state(game)
+
+          case Enum.empty?(game_state.players) do
+            true ->
+              GameServer.stop_game(Lucky.GameServer, socket.assigns.name)
+
+              socket
+              |> assign(:game_state, nil)
+              |> assign(:game, nil)
+
+            false ->
+              socket |> assign(:game_state, game_state)
+          end
 
         _ ->
           socket |> assign(:game_state, Game.get_state(game))
@@ -353,12 +385,15 @@ defmodule LuckyWeb.GameLive do
             socket.assigns.username
           )
 
+          Timer.setTime("timer", nil)
+
           socket
           |> assign(:username, nil)
           |> assign(:game_state, Game.get_state(game))
           |> assign(:timer, nil)
 
         time ->
+          Timer.setTime("timer", time - 1)
           socket |> assign(:timer, time - 1)
       end
 
@@ -373,8 +408,13 @@ defmodule LuckyWeb.GameLive do
 
     socket =
       case is_current(socket.assigns.username, new_state.players) do
-        true -> socket |> assign(:timer, 60)
-        false -> socket |> assign(:timer, nil)
+        true ->
+          Timer.setTime("timer", 60)
+          socket |> assign(:timer, 60)
+
+        false ->
+          Timer.setTime("timer", nil)
+          socket |> assign(:timer, nil)
       end
 
     {:noreply, socket |> assign(:game_state, new_state)}
@@ -386,8 +426,13 @@ defmodule LuckyWeb.GameLive do
 
     socket =
       case is_current(socket.assigns.username, new_state.players) do
-        true -> socket |> assign(:timer, 60)
-        false -> socket |> assign(:timer, nil)
+        true ->
+          Timer.setTime("timer", 60)
+          socket |> assign(:timer, 60)
+
+        false ->
+          Timer.setTime("timer", nil)
+          socket |> assign(:timer, nil)
       end
 
     {:noreply, socket |> assign(:game_state, new_state) |> assign(:previous_round, prev_round)}

@@ -13,6 +13,10 @@ defmodule GameServer do
     GenServer.cast(pid, {:create, name})
   end
 
+  def stop_game(pid, name) do
+    GenServer.cast(pid, {:stop, name})
+  end
+
   def init(:ok) do
     {:ok, %{}}
   end
@@ -27,6 +31,15 @@ defmodule GameServer do
     else
       {:ok, game} = GenServer.start_link(Game, :ok)
       {:noreply, Map.put(games, name, game)}
+    end
+  end
+
+  def handle_cast({:stop, name}, games) do
+    if Map.has_key?(games, name) do
+      GenServer.stop(Map.get(games, name))
+      {:noreply, Map.delete(games, name)}
+    else
+      {:noreply, games}
     end
   end
 end
